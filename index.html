@@ -5,79 +5,216 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Mission Control</title>
   <style>
-    :root { color-scheme: dark; --bg:#111318; --panel:#191c23; --line:#2b303a; --text:#f3f5f7; --muted:#98a1af; --active:#52e0b7; --warn:#ffca67; --error:#ff7185; --quiet:#748092; }
+    :root {
+      color-scheme:dark;
+      --bg:#0d0f13; --panel:#15181e; --panel-2:#1b1f27; --line:#2a303a;
+      --text:#f4f6f8; --muted:#939dab; --active:#52e0b7; --warn:#ffca67;
+      --error:#ff7185; --quiet:#758194; --accent:#8aa8ff;
+    }
     * { box-sizing:border-box }
-    body { margin:0; background:var(--bg); color:var(--text); font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif }
-    header { position:sticky; top:0; z-index:2; padding:16px 14px 12px; background:linear-gradient(180deg,#14171d 82%,transparent); backdrop-filter:blur(12px) }
-    .top { display:flex; align-items:center; justify-content:space-between; gap:10px }
-    h1 { margin:0; font-size:16px; letter-spacing:.02em }
-    .live { display:flex; align-items:center; gap:7px; color:var(--muted); font-size:11px }
-    .dot { width:8px; height:8px; border-radius:50%; background:var(--quiet); box-shadow:0 0 0 4px #74809218 }
+    body { min-height:100vh; margin:0; background:radial-gradient(circle at 70% -15%,#24304f55,transparent 34%),var(--bg); color:var(--text); font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif }
+    button { font:inherit }
+    .appbar { position:sticky; top:0; z-index:5; border-bottom:1px solid #242933cc; background:#0d0f13e8; backdrop-filter:blur(16px) }
+    .appbar-inner { display:flex; align-items:center; justify-content:space-between; max-width:1440px; margin:auto; padding:13px 16px }
+    .brand { display:flex; align-items:center; gap:10px }
+    .mark { display:grid; place-items:center; width:29px; height:29px; border:1px solid #52617d; border-radius:9px; background:linear-gradient(145deg,#27334c,#161a22); color:#bcd0ff; font-weight:800 }
+    h1 { margin:0; font-size:15px; letter-spacing:.025em }
+    .eyebrow { color:var(--muted); font-size:9px; letter-spacing:.16em; text-transform:uppercase }
+    .live { display:flex; align-items:center; gap:7px; color:var(--muted); font-size:10px; letter-spacing:.08em }
+    .dot { width:8px; height:8px; border-radius:50%; background:var(--quiet); box-shadow:0 0 0 4px #75819418 }
     .live[data-state="live"] .dot { background:var(--active); box-shadow:0 0 0 4px #52e0b71a; animation:pulse 1.8s infinite }
     .live[data-state="offline"] .dot { background:var(--error) }
-    .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin-top:13px }
-    .stat { padding:9px 10px; border:1px solid var(--line); border-radius:11px; background:#191d24 }
-    .stat b { display:block; font-size:18px; line-height:1.05 }
-    .stat span { color:var(--muted); font-size:10px }
-    nav { display:flex; gap:5px; margin-top:11px }
+    .workspace { display:grid; gap:12px; max-width:1440px; margin:auto; padding:12px }
+    .pane { min-width:0; overflow:hidden; border:1px solid var(--line); border-radius:16px; background:#12151aee; box-shadow:0 16px 44px #0003 }
+    .pane-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:15px 15px 12px }
+    h2 { margin:0; font-size:14px }
+    .subtle { margin-top:2px; color:var(--muted); font-size:10px }
+    .count, .plan { padding:3px 8px; border:1px solid var(--line); border-radius:999px; color:var(--muted); background:#171b22; font-size:10px; white-space:nowrap }
+    .plan { color:#bdcaff; border-color:#3c4864; background:#252e431f }
+    .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; padding:0 12px 11px }
+    .stat { padding:9px 10px; border:1px solid var(--line); border-radius:11px; background:var(--panel-2) }
+    .stat b { display:block; font-size:17px; line-height:1.05 }
+    .stat span { color:var(--muted); font-size:9px }
+    nav { display:flex; gap:5px; padding:0 12px 10px }
     nav button { flex:1; padding:7px 8px; border:1px solid var(--line); border-radius:9px; color:var(--muted); background:transparent; cursor:pointer }
-    nav button[aria-selected="true"] { color:var(--text); background:#262b34; border-color:#3b424e }
-    main { padding:2px 12px 28px }
-    .notice { display:flex; justify-content:space-between; gap:10px; margin:6px 2px 12px; color:var(--muted); font-size:11px }
-    article { margin-bottom:8px; padding:11px; border:1px solid var(--line); border-radius:12px; background:var(--panel); box-shadow:0 5px 18px #0002 }
-    article.active { border-color:#3e826f }
-    article.systemError { border-color:#783b48 }
+    nav button[aria-pressed="true"] { color:var(--text); background:#272c35; border-color:#404853 }
+    nav button:focus-visible, .task-select:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
+    .notice { display:flex; justify-content:space-between; gap:10px; padding:0 14px 9px; color:var(--muted); font-size:10px }
+    #tasks { padding:0 10px 10px }
+    article { margin-bottom:7px; padding:10px; border:1px solid var(--line); border-radius:12px; background:var(--panel); box-shadow:0 5px 18px #0002; transition:border-color .15s,background .15s }
+    article.selected { border-color:#657baa; background:#1a202b }
+    article.active { border-left-color:var(--active) }
+    article.systemError { border-left-color:var(--error) }
     .task-head { display:flex; align-items:flex-start; gap:8px }
-    .task-title { min-width:0; flex:1; font-weight:650; overflow-wrap:anywhere }
-    .pill { flex:none; padding:2px 7px; border-radius:999px; color:var(--quiet); background:#74809218; font-size:10px }
+    .task-select { min-width:0; flex:1; padding:0; border:0; color:inherit; background:none; text-align:left; cursor:pointer }
+    .task-title { display:block; font-weight:650; overflow-wrap:anywhere }
+    .pill { flex:none; padding:2px 7px; border-radius:999px; color:var(--quiet); background:#75819418; font-size:9px }
     .pill.active { color:var(--active); background:#52e0b718 }
     .pill.systemError { color:var(--error); background:#ff718518 }
     .pill.idle { color:var(--warn); background:#ffca6715 }
-    .meta { display:flex; flex-wrap:wrap; gap:5px 10px; margin-top:7px; color:var(--muted); font-size:10px }
-    .progress { height:3px; margin-top:9px; border-radius:3px; overflow:hidden; background:#2b3038 }
-    .progress i { display:block; width:35%; height:100%; border-radius:inherit; background:var(--quiet) }
-    .active .progress i { background:linear-gradient(90deg,transparent,var(--active),transparent); animation:run 1.4s linear infinite }
-    .systemError .progress i { width:100%; background:var(--error) }
-    .children { margin:9px 0 0 9px; padding-left:9px; border-left:2px solid #303641 }
-    .agent { margin-top:7px; padding:8px 9px; border-radius:9px; background:#12151a }
+    .meta { display:flex; flex-wrap:wrap; gap:4px 9px; margin-top:6px; color:var(--muted); font-size:9px }
+    .activity-line { display:none; height:3px; margin-top:8px; overflow:hidden; border-radius:3px; background:#292f38 }
+    .activity-line i { display:block; width:35%; height:100%; border-radius:inherit; background:var(--quiet) }
+    .active > .activity-line, .systemError > .activity-line { display:block }
+    .active > .activity-line i { background:linear-gradient(90deg,transparent,var(--active),transparent); animation:run 1.4s linear infinite }
+    .systemError > .activity-line i { width:100%; background:var(--error) }
+    .children { margin:9px 0 0 7px; padding-left:8px; border-left:2px solid #303744 }
+    .children article { margin-bottom:6px; padding:8px 9px; background:#101318 }
     .agent .task-title::before { content:"↳ "; color:var(--active) }
-    .empty { padding:36px 12px; text-align:center; color:var(--muted) }
-    footer { padding:0 14px 18px; color:#687280; font-size:10px; text-align:center }
+    .empty { padding:42px 12px; text-align:center; color:var(--muted) }
+    .status-body { display:grid; gap:10px; padding:0 12px 12px }
+    .status-screen { display:grid; gap:10px }
+    [hidden] { display:none!important }
+    .status-card { padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--panel-2) }
+    .status-card h3 { margin:0; font-size:11px; letter-spacing:.02em }
+    .status-title { margin:5px 0 0; font-weight:650; overflow-wrap:anywhere }
+    code { display:block; margin-top:6px; overflow:hidden; color:#aeb8c7; font:9px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace; text-overflow:ellipsis; white-space:nowrap }
+    .usage-row { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-top:11px }
+    .usage-row strong { font-size:18px }
+    .usage-row span, .reset, .unavailable { color:var(--muted); font-size:9px }
+    progress { display:block; width:100%; height:7px; margin-top:7px; overflow:hidden; border:0; border-radius:999px; background:#2a303a }
+    progress::-webkit-progress-bar { border-radius:999px; background:#2a303a }
+    progress::-webkit-progress-value { border-radius:999px; background:linear-gradient(90deg,var(--active),#a7efd8) }
+    progress::-moz-progress-bar { border-radius:999px; background:linear-gradient(90deg,var(--active),#a7efd8) }
+    progress.warn::-webkit-progress-value { background:linear-gradient(90deg,var(--warn),#ff8f70) }
+    progress.warn::-moz-progress-bar { background:linear-gradient(90deg,var(--warn),#ff8f70) }
+    progress.danger::-webkit-progress-value { background:var(--error) }
+    progress.danger::-moz-progress-bar { background:var(--error) }
+    .limit + .limit { margin-top:15px; padding-top:13px; border-top:1px solid var(--line) }
+    .reset { margin-top:5px }
+    .activity-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:7px; margin-top:10px }
+    .activity-stat { min-width:0; padding:9px; border-radius:9px; background:#111419 }
+    .activity-stat b { display:block; overflow:hidden; font-size:14px; text-overflow:ellipsis; white-space:nowrap }
+    .activity-stat span { color:var(--muted); font-size:8px }
+    .status-note { color:var(--muted); font-size:9px; text-align:center }
+    footer { padding:4px 14px 18px; color:#697383; font-size:9px; text-align:center }
     @keyframes run { from{transform:translateX(-110%)} to{transform:translateX(300%)} }
     @keyframes pulse { 50%{opacity:.45} }
-    @media (prefers-reduced-motion:reduce) { * { animation:none!important } }
+    @media (min-width:820px) {
+      .workspace { grid-template-columns:minmax(430px,1.35fr) minmax(310px,.65fr); align-items:start }
+      .status-pane { position:sticky; top:68px; max-height:calc(100vh - 80px); overflow:auto }
+    }
+    @media (max-width:819px) { .status-pane { grid-row:1 } }
+    @media (max-width:420px) { .workspace { padding:8px }.pane { border-radius:13px }.appbar-inner { padding:11px 12px } }
+    @media (prefers-reduced-motion:reduce) { * { scroll-behavior:auto!important; animation:none!important; transition:none!important } }
   </style>
 </head>
 <body>
-  <header>
-    <div class="top"><h1>Mission Control</h1><div class="live" id="live" data-state="connecting"><span class="dot"></span><span id="connection">接続中</span></div></div>
-    <div class="stats">
-      <div class="stat"><b id="activeCount">–</b><span>実行中</span></div>
-      <div class="stat"><b id="agentCount">–</b><span>Agents</span></div>
-      <div class="stat"><b id="attentionCount">–</b><span>要確認</span></div>
+  <header class="appbar">
+    <div class="appbar-inner">
+      <div class="brand"><div class="mark" aria-hidden="true">M</div><div><div class="eyebrow">Codex</div><h1>Mission Control</h1></div></div>
+      <div class="live" id="live" data-state="connecting"><span class="dot" aria-hidden="true"></span><span id="connection" aria-live="polite">接続中</span></div>
     </div>
-    <nav aria-label="表示フィルター">
-      <button data-filter="focus" aria-selected="true">進行中</button>
-      <button data-filter="all" aria-selected="false">すべて</button>
-      <button data-filter="agents" aria-selected="false">Agents</button>
-    </nav>
   </header>
-  <main>
-    <div class="notice"><span id="message">状態を取得しています</span><time id="updated">–</time></div>
-    <div id="tasks" aria-live="polite"></div>
+  <main class="workspace">
+    <section class="pane tasks-pane" aria-labelledby="tasksTitle">
+      <div class="pane-head"><div><h2 id="tasksTitle">タスク</h2><div class="subtle">親タスクと Agents をまとめて表示</div></div><span class="count" id="taskCount">0件</span></div>
+      <div class="stats">
+        <div class="stat"><b id="activeCount">–</b><span>実行中</span></div>
+        <div class="stat"><b id="agentCount">–</b><span>Agents</span></div>
+        <div class="stat"><b id="attentionCount">–</b><span>要確認</span></div>
+      </div>
+      <nav aria-label="表示フィルター">
+        <button data-filter="all" aria-pressed="true">すべて</button>
+        <button data-filter="focus" aria-pressed="false">進行中</button>
+        <button data-filter="agents" aria-pressed="false">Agents</button>
+      </nav>
+      <div class="notice"><span id="message">状態を取得しています</span><time id="updated">–</time></div>
+      <div id="tasks"></div>
+    </section>
+
+    <aside class="pane status-pane" aria-labelledby="statusTitle">
+      <div class="pane-head"><div><h2 id="statusTitle">使用状況</h2><div class="subtle">/status 相当のライブ情報</div></div><span class="plan" id="plan">確認中</span></div>
+      <nav class="status-nav" aria-label="使用状況の画面">
+        <button data-status-view="overview" aria-pressed="true">週上限</button>
+        <button data-status-view="details" aria-pressed="false">詳細</button>
+      </nav>
+      <div class="status-body">
+        <div class="status-screen" id="overviewPanel">
+          <section class="status-card" aria-labelledby="limitsTitle"><h3 id="limitsTitle">Codex 週上限</h3><div id="limits"></div></section>
+        </div>
+        <div class="status-screen" id="detailsPanel" hidden>
+          <section class="status-card" id="threadStatus" aria-labelledby="threadStatusTitle"></section>
+          <section class="status-card" aria-labelledby="activityTitle"><h3 id="activityTitle">トークン活動</h3><div id="activity"></div></section>
+        </div>
+        <div class="status-note"><span id="usageMessage"></span> <time id="usageUpdated"></time></div>
+      </div>
+    </aside>
   </main>
-  <footer>3秒ごとに自動更新 · ローカル接続のみ · 完了率は推測しません</footer>
+  <footer>3秒ごとにタスク更新 · 使用状況は60秒ごと · ローカル接続のみ</footer>
   <script>
     const labels={active:"実行中",systemError:"要確認",idle:"待機中",notLoaded:"未読込",unknown:"不明"};
     const priority={active:0,systemError:1,idle:2,notLoaded:3,unknown:4};
-    let snapshot={threads:[]}, filter="focus";
+    const numberFormat=new Intl.NumberFormat("ja-JP");
+    const compactFormat=new Intl.NumberFormat("ja-JP",{notation:"compact",maximumFractionDigits:1});
+    let snapshot={threads:[],threadsReady:false,usage:{}}, filter="all", statusView="overview", selectedId=null;
     const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[char]);
     const relative=time=>{const seconds=Math.max(0,Math.round((Date.now()-time)/1000));if(seconds<10)return"たった今";if(seconds<60)return`${seconds}秒前`;if(seconds<3600)return`${Math.floor(seconds/60)}分前`;if(seconds<86400)return`${Math.floor(seconds/3600)}時間前`;return`${Math.floor(seconds/86400)}日前`};
     const flag=flags=>flags?.includes("waitingOnApproval")?"承認待ち":flags?.includes("waitingOnUserInput")?"入力待ち":null;
-    function card(thread,children=[]){const status=labels[thread.status]||labels.unknown;const note=flag(thread.activeFlags);return `<article class="${escapeHtml(thread.status)} ${thread.isSubagent?"agent":""}"><div class="task-head"><div class="task-title">${escapeHtml(thread.title)}</div><span class="pill ${escapeHtml(thread.status)}">${escapeHtml(note||status)}</span></div><div class="meta"><span>${escapeHtml(thread.project)}</span><span>${relative(thread.updatedAt)}</span>${thread.isSubagent?`<span>${escapeHtml(thread.agentKind||"subagent")}</span>`:""}</div><div class="progress" role="progressbar" aria-label="${escapeHtml(status)}"><i></i></div>${children.length?`<div class="children">${children.map(child=>card(child)).join("")}</div>`:""}</article>`}
-    function render(){const threads=snapshot.threads||[];const byParent=new Map();for(const thread of threads){if(thread.parentId){const list=byParent.get(thread.parentId)||[];list.push(thread);byParent.set(thread.parentId,list)}}const roots=threads.filter(thread=>!thread.parentId||!threads.some(item=>item.id===thread.parentId));const visible=root=>{const family=[root,...(byParent.get(root.id)||[])];return filter==="all"||filter==="agents"&&family.some(item=>item.isSubagent)||filter==="focus"&&family.some(item=>item.status==="active"||item.status==="systemError")};const sorted=roots.filter(visible).sort((a,b)=>(priority[a.status]??9)-(priority[b.status]??9)||b.updatedAt-a.updatedAt);document.querySelector("#tasks").innerHTML=sorted.length?sorted.map(root=>card(root,(byParent.get(root.id)||[]).sort((a,b)=>a.updatedAt-b.updatedAt))).join(""):`<div class="empty">${filter==="focus"?"現在、進行中のタスクはありません":"表示できるタスクがありません"}</div>`;const active=threads.filter(t=>t.status==="active").length;document.querySelector("#activeCount").textContent=active;document.querySelector("#agentCount").textContent=threads.filter(t=>t.isSubagent&&t.status==="active").length;document.querySelector("#attentionCount").textContent=threads.filter(t=>t.status==="systemError").length;document.querySelector("#message").textContent=snapshot.message||"";document.querySelector("#updated").textContent=snapshot.updatedAt?relative(snapshot.updatedAt):"–";document.querySelector("#live").dataset.state=snapshot.connection;document.querySelector("#connection").textContent=snapshot.connection==="live"?"LIVE":snapshot.connection==="offline"?"OFFLINE":"接続中"}
-    document.querySelectorAll("nav button").forEach(button=>button.addEventListener("click",()=>{filter=button.dataset.filter;document.querySelectorAll("nav button").forEach(item=>item.setAttribute("aria-selected",String(item===button)));render()}));
-    const events=new EventSource("/events");events.onmessage=event=>{snapshot=JSON.parse(event.data);render()};events.onerror=()=>{snapshot.connection="offline";snapshot.message="再接続しています";render()};setInterval(render,1000);
+    const formatTokens=value=>value==null?"–":compactFormat.format(value);
+    const exact=value=>value==null?"":numberFormat.format(value);
+    const percent=value=>Math.max(0,Math.min(100,Number(value)||0));
+    const progressClass=value=>value>=90?"danger":value>=70?"warn":"";
+    function resetAt(time){if(!time)return"リセット時刻なし";const date=new Date(time);return`${date.toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})} にリセット`}
+    function family(thread,byParent){return [thread,...(byParent.get(thread.id)||[]).flatMap(child=>family(child,byParent))]}
+    function card(thread,byParent){const status=labels[thread.status]||labels.unknown;const note=flag(thread.activeFlags);const children=(byParent.get(thread.id)||[]).sort((a,b)=>a.updatedAt-b.updatedAt);return `<article class="${escapeHtml(thread.status)} ${thread.isSubagent?"agent":""} ${thread.id===selectedId?"selected":""}"><div class="task-head"><button class="task-select" data-thread-id="${escapeHtml(thread.id)}" aria-pressed="${thread.id===selectedId}"><span class="task-title">${escapeHtml(thread.title)}</span><span class="meta"><span>${escapeHtml(thread.project)}</span><span>${relative(thread.updatedAt)}</span>${thread.isSubagent?`<span>${escapeHtml(thread.agentKind||"subagent")}</span>`:""}</span></button><span class="pill ${escapeHtml(thread.status)}">${escapeHtml(note||status)}</span></div><div class="activity-line" aria-hidden="true"><i></i></div>${children.length?`<div class="children">${children.map(child=>card(child,byParent)).join("")}</div>`:""}</article>`}
+    function renderTasks(){
+      const threads=snapshot.threads||[];
+      if(!threads.some(thread=>thread.id===selectedId))selectedId=threads.find(thread=>thread.status==="active"&&!thread.isSubagent)?.id||threads.find(thread=>thread.status==="active")?.id||threads[0]?.id||null;
+      const byParent=new Map();
+      for(const thread of threads){if(thread.parentId){const list=byParent.get(thread.parentId)||[];list.push(thread);byParent.set(thread.parentId,list)}}
+      const roots=threads.filter(thread=>!thread.parentId||!threads.some(item=>item.id===thread.parentId));
+      const visible=root=>{const group=family(root,byParent);return filter==="all"||filter==="agents"&&group.some(item=>item.isSubagent)||filter==="focus"&&group.some(item=>item.status==="active"||item.status==="systemError")};
+      const sorted=roots.filter(visible).sort((a,b)=>Number(b.isPinned)-Number(a.isPinned)||(priority[a.status]??9)-(priority[b.status]??9)||b.updatedAt-a.updatedAt);
+      document.querySelector("#tasks").innerHTML=sorted.length?sorted.map(root=>card(root,byParent)).join(""):`<div class="empty">${!snapshot.threadsReady?"タスクを読み込み中…":filter==="focus"?"現在、進行中のタスクはありません":"表示できるタスクがありません"}</div>`;
+      document.querySelector("#taskCount").textContent=`${sorted.length}件 / 全${roots.length}件`;
+      document.querySelector("#activeCount").textContent=threads.filter(thread=>thread.status==="active").length;
+      document.querySelector("#agentCount").textContent=threads.filter(thread=>thread.isSubagent&&thread.status==="active").length;
+      document.querySelector("#attentionCount").textContent=threads.filter(thread=>thread.status==="systemError").length;
+    }
+    function renderThreadStatus(){
+      const thread=(snapshot.threads||[]).find(item=>item.id===selectedId);
+      if(!thread){document.querySelector("#threadStatus").innerHTML='<h3 id="threadStatusTitle">選択タスク</h3><div class="unavailable">タスクを取得すると詳細を表示します</div>';return}
+      const context=thread.context;
+      const used=context?.usedTokens||0;
+      const total=context?.contextWindow||0;
+      const ratio=total?used/total*100:0;
+      document.querySelector("#threadStatus").innerHTML=`<h3 id="threadStatusTitle">選択タスク</h3><div class="status-title">${escapeHtml(thread.title)}</div><code title="${escapeHtml(thread.id)}">${escapeHtml(thread.id)}</code>${context?`<div class="usage-row"><div><strong>${Math.round(ratio)}%</strong> <span>コンテキスト使用</span></div><span title="${exact(used)} / ${exact(total)} tokens">${formatTokens(used)} / ${formatTokens(total)}</span></div><progress class="${progressClass(ratio)}" max="100" value="${percent(ratio)}" aria-label="コンテキスト使用率 ${Math.round(ratio)}%"></progress>`:'<div class="unavailable" style="margin-top:10px">このタスクのコンテキスト情報はまだありません</div>'}`;
+    }
+    function renderLimits(){
+      const usage=snapshot.usage||{};
+      const limit=(usage.limits||[]).find(item=>item.id==="codex");
+      const windows=(limit?.windows||[]).filter(window=>window.windowDurationMins>=10080);
+      document.querySelector("#plan").textContent=usage.plan?String(usage.plan).toUpperCase():usage.status==="loading"?"確認中":"未取得";
+      document.querySelector("#limits").innerHTML=windows.length?windows.map(window=>`<div class="limit"><div class="usage-row"><strong>${Math.round(window.usedPercent)}%</strong><span>${window.reached?"上限到達":"使用済み"}</span></div><progress class="${progressClass(window.usedPercent)}" max="100" value="${percent(window.usedPercent)}" aria-label="Codex 週上限 使用率 ${Math.round(window.usedPercent)}%"></progress><div class="reset">${resetAt(window.resetsAt)}</div></div>`).join(""):'<div class="unavailable" style="margin-top:10px">週上限を取得できません</div>';
+    }
+    function renderActivity(){
+      const activity=snapshot.usage?.activity;
+      if(!activity){document.querySelector("#activity").innerHTML='<div class="unavailable" style="margin-top:10px">この認証方式では利用できない場合があります</div>';return}
+      const cells=[
+        [formatTokens(activity.latest?.tokens),activity.latest?.date?`${activity.latest.date} の利用`:"最新日の利用",activity.latest?.tokens],
+        [formatTokens(activity.lifetimeTokens),"累計トークン",activity.lifetimeTokens],
+        [formatTokens(activity.peakDailyTokens),"1日の最大",activity.peakDailyTokens],
+        [activity.currentStreakDays==null?"–":`${activity.currentStreakDays}日`,"現在の連続利用",null],
+      ];
+      document.querySelector("#activity").innerHTML=`<div class="activity-grid">${cells.map(([value,label,raw])=>`<div class="activity-stat"${raw!=null?` title="${exact(raw)} tokens"`:""}><b>${escapeHtml(value)}</b><span>${escapeHtml(label)}</span></div>`).join("")}</div>`;
+    }
+    function render(){
+      renderTasks();renderThreadStatus();renderLimits();renderActivity();
+      document.querySelector("#message").textContent=snapshot.message||"";
+      document.querySelector("#updated").textContent=snapshot.updatedAt?relative(snapshot.updatedAt):"–";
+      document.querySelector("#live").dataset.state=snapshot.connection;
+      document.querySelector("#connection").textContent=snapshot.connection==="live"?"LIVE":snapshot.connection==="offline"?"OFFLINE":"接続中";
+      document.querySelector("#usageMessage").textContent=snapshot.usage?.message||"";
+      document.querySelector("#usageUpdated").textContent=snapshot.usage?.updatedAt?`更新 ${relative(snapshot.usage.updatedAt)}`:"";
+    }
+    document.querySelectorAll("[data-filter]").forEach(button=>button.addEventListener("click",()=>{filter=button.dataset.filter;document.querySelectorAll("[data-filter]").forEach(item=>item.setAttribute("aria-pressed",String(item===button)));render()}));
+    document.querySelectorAll("[data-status-view]").forEach(button=>button.addEventListener("click",()=>{statusView=button.dataset.statusView;document.querySelectorAll("[data-status-view]").forEach(item=>item.setAttribute("aria-pressed",String(item===button)));document.querySelector("#overviewPanel").hidden=statusView!=="overview";document.querySelector("#detailsPanel").hidden=statusView!=="details"}));
+    document.querySelector("#tasks").addEventListener("click",event=>{const button=event.target.closest(".task-select");if(!button)return;selectedId=button.dataset.threadId;render()});
+    const events=new EventSource("/events");
+    events.onmessage=event=>{snapshot=JSON.parse(event.data);render()};
+    events.onerror=()=>{snapshot.connection="offline";snapshot.message="再接続しています";render()};
+    render();
   </script>
 </body>
 </html>

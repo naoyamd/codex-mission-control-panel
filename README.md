@@ -1,9 +1,15 @@
 # Codex Mission Control Panel
 
-A tiny, dependency-free local dashboard for Codex task and subagent status.
+A dependency-free local dashboard for Codex tasks, agents, context, and usage.
 
-It shows active tasks, tasks needing attention, parent/subagent relationships,
-and live status updates in a narrow layout suited to the Codex side panel.
+Version 1.0 shows every task by default and uses a responsive split layout:
+
+- **Tasks:** live state, attention flags, pin priority, and nested subagents.
+- **Usage:** the Codex weekly limit is the default view. Selected chat context
+  and token activity live on a separate details screen; dedicated Spark limits
+  stay out of the way.
+- **Responsive:** two panes on wide screens and a compact stacked view in the
+  Codex side panel.
 
 > This is an independent community project, not an official OpenAI product.
 > It uses the experimental Codex App Server interface described in the
@@ -55,6 +61,8 @@ publication. Distribution is currently through the public GitHub repository.
 - The HTTP server binds to `127.0.0.1` only.
 - Task titles and project names stay on the local machine.
 - Recent local Codex session metadata is read to supplement live status.
+- Rate limits and token activity come from the authenticated Codex App Server.
+- Token activity may be unavailable with API-key-only or Bedrock authentication.
 - Completion percentages are not guessed; active work uses an indeterminate bar.
 - The Codex App Server command and protocol may change while experimental.
 

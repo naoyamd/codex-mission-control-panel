@@ -1,8 +1,8 @@
 {
   "name": "codex-mission-control-panel",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "A tiny local dashboard for Codex task and subagent status.",
+  "description": "A local Mission Control dashboard for Codex tasks, agents, context, and usage.",
   "type": "module",
   "bin": {
     "codex-mission-control": "./server.mjs"

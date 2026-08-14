@@ -8,22 +8,26 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+const version = "1.0.0";
 const here = dirname(fileURLToPath(import.meta.url));
 const sourceKinds = [
   "cli", "vscode", "exec", "appServer", "subAgent", "subAgentReview",
   "subAgentCompact", "subAgentThreadSpawn", "subAgentOther", "unknown",
 ];
 const subscribers = new Set();
+const pending = new Map();
+const sessionCache = new Map();
 let codexHome = process.env.CODEX_HOME || join(homedir(), ".codex");
 let appServer;
 let stdoutBuffer = "";
 let requestId = 0;
 let reconnectTimer;
-const pending = new Map();
 let state = {
   connection: "connecting",
   updatedAt: Date.now(),
   threads: [],
+  threadsReady: false,
+  usage: { status: "loading", plan: null, limits: [], activity: null, updatedAt: null, message: "" },
   message: "Codexへ接続しています",
 };
 
@@ -54,7 +58,7 @@ function normalizedThread(thread) {
   return {
     id: thread.id,
     parentId: thread.parentThreadId || null,
-    title: thread.name || thread.agentNickname || thread.agentRole || (agent ? `サブエージェント · ${agent}` : `タスク ${thread.id.slice(0, 8)}`),
+    title: thread.name || thread.agentNickname || thread.agentRole || (agent ? `サブエージェント ${agent}` : `タスク ${thread.id.slice(0, 8)}`),
     project: thread.cwd ? basename(thread.cwd) : "Codex",
     status: statusType(thread.status),
     activeFlags: thread.status?.activeFlags || [],
@@ -62,6 +66,52 @@ function normalizedThread(thread) {
     isPinned: Boolean(thread.isPinned),
     isSubagent: Boolean(agent || thread.parentThreadId),
     agentKind: agent,
+    context: null,
+  };
+}
+
+function finite(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function normalizedContext(info) {
+  const last = info?.lastTokenUsage || info?.last_token_usage;
+  const usedTokens = finite(last?.totalTokens ?? last?.total_tokens);
+  const contextWindow = finite(info?.modelContextWindow ?? info?.model_context_window);
+  return usedTokens != null && contextWindow ? { usedTokens, contextWindow } : null;
+}
+
+function normalizedWindow(kind, window) {
+  if (!window) return null;
+  const usedPercent = finite(window.usedPercent ?? window.used_percent);
+  const windowDurationMins = finite(window.windowDurationMins ?? window.window_minutes);
+  const resetsAt = finite(window.resetsAt ?? window.resets_at);
+  return usedPercent == null ? null : { kind, usedPercent, windowDurationMins, resetsAt: resetsAt ? resetsAt * 1000 : null };
+}
+
+function normalizedLimits(result = {}) {
+  const byId = result.rateLimitsByLimitId;
+  const buckets = byId && typeof byId === "object" ? Object.values(byId) : [result.rateLimits].filter(Boolean);
+  return buckets.map((bucket) => ({
+    id: bucket.limitId || bucket.limit_id || "codex",
+    name: bucket.limitName || bucket.limit_name || null,
+    plan: bucket.planType || bucket.plan_type || null,
+    reached: bucket.rateLimitReachedType || bucket.rate_limit_reached_type || null,
+    windows: [normalizedWindow("primary", bucket.primary), normalizedWindow("secondary", bucket.secondary)].filter(Boolean),
+  })).filter((bucket) => bucket.windows.length);
+}
+
+function normalizedActivity(result = {}) {
+  const summary = result.summary || {};
+  const buckets = Array.isArray(result.dailyUsageBuckets) ? [...result.dailyUsageBuckets] : [];
+  buckets.sort((a, b) => String(a.startDate).localeCompare(String(b.startDate)));
+  const latest = buckets.at(-1);
+  return {
+    lifetimeTokens: finite(summary.lifetimeTokens),
+    peakDailyTokens: finite(summary.peakDailyTokens),
+    currentStreakDays: finite(summary.currentStreakDays),
+    latest: latest ? { date: latest.startDate, tokens: finite(latest.tokens) } : null,
   };
 }
 
@@ -99,6 +149,15 @@ function onMessage(message) {
       publish();
     }
   }
+  if (message.method === "account/rateLimits/updated") {
+    const incoming = normalizedLimits(message.params);
+    if (incoming.length) {
+      const limits = new Map(state.usage.limits.map((limit) => [limit.id, limit]));
+      for (const limit of incoming) limits.set(limit.id, limit);
+      state.usage = { ...state.usage, status: "ready", limits: [...limits.values()], updatedAt: Date.now(), message: "" };
+      publish();
+    }
+  }
 }
 
 function connect() {
@@ -106,6 +165,7 @@ function connect() {
   stdoutBuffer = "";
   state.connection = "connecting";
   state.message = "Codexへ接続しています";
+  state.usage.status = state.usage.updatedAt ? "stale" : "loading";
   publish();
   appServer = spawn("codex", ["app-server", "--stdio"], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
   appServer.stdout.setEncoding("utf8");
@@ -122,14 +182,14 @@ function connect() {
   appServer.on("error", (error) => disconnect(error.message));
   appServer.on("exit", () => disconnect("Codexとの接続が切れました"));
   send("initialize", {
-    clientInfo: { name: "mission_control_panel", title: "Mission Control Panel", version: "0.1.0" },
+    clientInfo: { name: "mission_control_panel", title: "Mission Control Panel", version },
     capabilities: { experimentalApi: true },
   }).then((result) => {
     codexHome = result.codexHome || codexHome;
     writeNotification({ method: "initialized", params: {} });
     state.connection = "live";
-    state.message = "常時更新中";
-    return refresh();
+    state.message = "自動更新中";
+    return Promise.all([refresh(), refreshUsage()]);
   }).catch((error) => disconnect(error.message));
 }
 
@@ -137,6 +197,7 @@ function disconnect(message) {
   if (state.connection === "offline" && reconnectTimer) return;
   state.connection = "offline";
   state.message = message;
+  state.usage.status = state.usage.updatedAt ? "stale" : "unavailable";
   for (const { reject, timer } of pending.values()) {
     clearTimeout(timer);
     reject(new Error(message));
@@ -150,13 +211,7 @@ async function listThreads() {
   const all = [];
   let cursor = null;
   do {
-    const result = await send("thread/list", {
-      cursor,
-      limit: 100,
-      sortKey: "updated_at",
-      sortDirection: "desc",
-      sourceKinds,
-    });
+    const result = await send("thread/list", { cursor, limit: 100, sortKey: "updated_at", sortDirection: "desc", sourceKinds });
     all.push(...result.data);
     cursor = result.nextCursor;
   } while (cursor && all.length < 500);
@@ -184,6 +239,8 @@ async function recentRollouts() {
 
 async function readSessionStatus(path) {
   const info = await stat(path);
+  const cached = sessionCache.get(path);
+  if (cached?.size === info.size && cached.mtimeMs === info.mtimeMs) return cached.value;
   const handle = await open(path, "r");
   try {
     const firstSize = Math.min(info.size, 64 * 1024);
@@ -194,11 +251,15 @@ async function readSessionStatus(path) {
     const tailSize = Math.min(info.size, 2 * 1024 * 1024);
     const tail = Buffer.alloc(tailSize);
     await handle.read(tail, 0, tailSize, info.size - tailSize);
-    const matches = [...tail.toString("utf8").matchAll(/"type":"(task_started|task_complete|task_aborted)"/g)];
+    const text = tail.toString("utf8");
+    const matches = [...text.matchAll(/"type":"(task_started|task_complete|task_aborted)"/g)];
     const last = matches.at(-1)?.[1];
     if (!meta.id || !last) return null;
+    const tokenLine = text.split(/\r?\n/).findLast((line) => line.includes('"type":"token_count"'));
+    let context = null;
+    try { context = normalizedContext(JSON.parse(tokenLine)?.payload?.info); } catch { /* no complete token line in tail */ }
     const stale = Date.now() - info.mtimeMs > 30 * 60 * 1000;
-    return {
+    const value = {
       id: meta.id,
       parentId: meta.parent_thread_id || null,
       project: meta.cwd ? basename(meta.cwd) : "Codex",
@@ -207,7 +268,10 @@ async function readSessionStatus(path) {
       status: last === "task_started" ? (stale ? "notLoaded" : "active") : "idle",
       activeFlags: [],
       updatedAt: info.mtimeMs,
+      context,
     };
+    sessionCache.set(path, { size: info.size, mtimeMs: info.mtimeMs, value });
+    return value;
   } finally {
     await handle.close();
   }
@@ -224,6 +288,7 @@ async function mergeRuntime(threads) {
       existing.updatedAt = Math.max(existing.updatedAt, item.updatedAt);
       existing.parentId ||= item.parentId;
       existing.isSubagent ||= item.isSubagent;
+      existing.context = item.context || existing.context;
     } else if (item.status !== "idle") {
       map.set(item.id, {
         ...item,
@@ -239,13 +304,35 @@ async function refresh() {
   if (state.connection !== "live") return;
   try {
     state.threads = await mergeRuntime(await listThreads());
+    state.threadsReady = true;
     state.updatedAt = Date.now();
-    state.message = "常時更新中";
+    state.message = "自動更新中";
     publish();
   } catch (error) {
     state.message = `更新待ち: ${error.message}`;
     publish();
   }
+}
+
+async function refreshUsage() {
+  if (state.connection !== "live") return;
+  const [account, limits, activity] = await Promise.allSettled([
+    send("account/read", { refreshToken: false }),
+    send("account/rateLimits/read"),
+    send("account/usage/read"),
+  ]);
+  const normalized = limits.status === "fulfilled" ? normalizedLimits(limits.value) : [];
+  const plan = account.status === "fulfilled" ? account.value.account?.planType || null : null;
+  const errors = [limits, activity].filter((item) => item.status === "rejected").map((item) => item.reason.message);
+  state.usage = {
+    status: normalized.length ? (errors.length ? "partial" : "ready") : "unavailable",
+    plan: plan || normalized.find((limit) => limit.plan)?.plan || null,
+    limits: normalized,
+    activity: activity.status === "fulfilled" ? normalizedActivity(activity.value) : null,
+    updatedAt: Date.now(),
+    message: errors.length ? "一部の利用状況を取得できません" : "",
+  };
+  publish();
 }
 
 function publish() {
@@ -295,6 +382,8 @@ function selfCheck() {
   const child = normalizedThread({ id: "123456789", parentThreadId: "root", status: { type: "idle" }, source: { subAgent: "worker" } });
   assert.equal(child.parentId, "root");
   assert.equal(child.isSubagent, true);
+  assert.deepEqual(normalizedContext({ last_token_usage: { total_tokens: 250 }, model_context_window: 1000 }), { usedTokens: 250, contextWindow: 1000 });
+  assert.equal(normalizedLimits({ rateLimits: { limitId: "codex", primary: { usedPercent: 25, windowDurationMins: 60, resetsAt: 100 } } })[0].windows[0].resetsAt, 100_000);
   console.log("SELF_CHECK_OK");
 }
 
@@ -306,5 +395,6 @@ if (process.argv.includes("--self-check")) {
       console.log(`Mission Control: http://127.0.0.1:${port}`);
       connect();
       setInterval(refresh, 3000).unref();
+      setInterval(refreshUsage, 60_000).unref();
     });
 }
