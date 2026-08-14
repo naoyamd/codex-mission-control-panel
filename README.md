@@ -14,38 +14,41 @@ and live status updates in a narrow layout suited to the Codex side panel.
 Requirements: Node.js 18+ and an authenticated `codex` CLI available on `PATH`.
 
 ```sh
-git clone https://github.com/naoyamd/codex-mission-control-panel.git
-cd codex-mission-control-panel
-node server.mjs
+npx --yes github:naoyamd/codex-mission-control-panel
 ```
 
 Then open <http://127.0.0.1:43177/> in the Codex side panel or a browser.
 
+To run from a clone:
+
+```sh
+npm start
+```
+
 Set a different port with `MISSION_CONTROL_PORT`.
 
 ```sh
-MISSION_CONTROL_PORT=44000 node server.mjs
+MISSION_CONTROL_PORT=44000 npm start
 ```
 
 PowerShell:
 
 ```powershell
 $env:MISSION_CONTROL_PORT = 44000
-node server.mjs
+npm start
 ```
 
 ## Check
 
 ```sh
-node --check server.mjs
-node server.mjs --self-check
+npm run check
 ```
 
 ## Project policy
 
-This project permanently avoids npm, npx, pnpm, Yarn, Bun, package registries,
-package manifests, lockfiles, and third-party dependencies. No package-manager
-installation step is required or allowed.
+This project may use npm and npx locally, but it must never be published to the
+npm Registry. `package.json` is marked `"private": true` to block accidental
+publication. Distribution is currently through the public GitHub repository.
 
 ## Privacy and limits
 

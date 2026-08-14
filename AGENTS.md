@@ -1,9 +1,10 @@
 # Project rules
 
-## Forbidden package tooling
+## npm Registry publishing is forbidden
 
-- Never use npm, npx, pnpm, Yarn, Bun, package registries, `package.json`, lockfiles, or `node_modules` in this project.
-- Keep the project dependency-free. Use only the Node.js standard library and the existing `codex` CLI.
-- Run the app with `node server.mjs`.
-- Verify it with `node --check server.mjs` and `node server.mjs --self-check`.
-- If a future request appears to require a package or package manager, stop and explain the conflict instead of adding one. Only an explicit user instruction may change this rule.
+- Never publish this project to the npm Registry. Do not run `npm publish`.
+- Keep `"private": true` in `package.json`; never remove or override this publication guard.
+- Never add npm Registry credentials, tokens, `publishConfig`, or automated npm release workflows.
+- npm, npx, `package.json`, lockfiles, and local package installation are allowed for development and use.
+- Keep GitHub as the distribution source unless the user explicitly chooses another non-npm channel.
+- If a future request would publish to the npm Registry, stop and explain the conflict. Only an explicit user instruction may change this rule.
