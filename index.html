@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mission Control</title>
+  <style>
+    :root { color-scheme: dark; --bg:#111318; --panel:#191c23; --line:#2b303a; --text:#f3f5f7; --muted:#98a1af; --active:#52e0b7; --warn:#ffca67; --error:#ff7185; --quiet:#748092; }
+    * { box-sizing:border-box }
+    body { margin:0; background:var(--bg); color:var(--text); font:13px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif }
+    header { position:sticky; top:0; z-index:2; padding:16px 14px 12px; background:linear-gradient(180deg,#14171d 82%,transparent); backdrop-filter:blur(12px) }
+    .top { display:flex; align-items:center; justify-content:space-between; gap:10px }
+    h1 { margin:0; font-size:16px; letter-spacing:.02em }
+    .live { display:flex; align-items:center; gap:7px; color:var(--muted); font-size:11px }
+    .dot { width:8px; height:8px; border-radius:50%; background:var(--quiet); box-shadow:0 0 0 4px #74809218 }
+    .live[data-state="live"] .dot { background:var(--active); box-shadow:0 0 0 4px #52e0b71a; animation:pulse 1.8s infinite }
+    .live[data-state="offline"] .dot { background:var(--error) }
+    .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin-top:13px }
+    .stat { padding:9px 10px; border:1px solid var(--line); border-radius:11px; background:#191d24 }
+    .stat b { display:block; font-size:18px; line-height:1.05 }
+    .stat span { color:var(--muted); font-size:10px }
+    nav { display:flex; gap:5px; margin-top:11px }
+    nav button { flex:1; padding:7px 8px; border:1px solid var(--line); border-radius:9px; color:var(--muted); background:transparent; cursor:pointer }
+    nav button[aria-selected="true"] { color:var(--text); background:#262b34; border-color:#3b424e }
+    main { padding:2px 12px 28px }
+    .notice { display:flex; justify-content:space-between; gap:10px; margin:6px 2px 12px; color:var(--muted); font-size:11px }
+    article { margin-bottom:8px; padding:11px; border:1px solid var(--line); border-radius:12px; background:var(--panel); box-shadow:0 5px 18px #0002 }
+    article.active { border-color:#3e826f }
+    article.systemError { border-color:#783b48 }
+    .task-head { display:flex; align-items:flex-start; gap:8px }
+    .task-title { min-width:0; flex:1; font-weight:650; overflow-wrap:anywhere }
+    .pill { flex:none; padding:2px 7px; border-radius:999px; color:var(--quiet); background:#74809218; font-size:10px }
+    .pill.active { color:var(--active); background:#52e0b718 }
+    .pill.systemError { color:var(--error); background:#ff718518 }
+    .pill.idle { color:var(--warn); background:#ffca6715 }
+    .meta { display:flex; flex-wrap:wrap; gap:5px 10px; margin-top:7px; color:var(--muted); font-size:10px }
+    .progress { height:3px; margin-top:9px; border-radius:3px; overflow:hidden; background:#2b3038 }
+    .progress i { display:block; width:35%; height:100%; border-radius:inherit; background:var(--quiet) }
+    .active .progress i { background:linear-gradient(90deg,transparent,var(--active),transparent); animation:run 1.4s linear infinite }
+    .systemError .progress i { width:100%; background:var(--error) }
+    .children { margin:9px 0 0 9px; padding-left:9px; border-left:2px solid #303641 }
+    .agent { margin-top:7px; padding:8px 9px; border-radius:9px; background:#12151a }
+    .agent .task-title::before { content:"↳ "; color:var(--active) }
+    .empty { padding:36px 12px; text-align:center; color:var(--muted) }
+    footer { padding:0 14px 18px; color:#687280; font-size:10px; text-align:center }
+    @keyframes run { from{transform:translateX(-110%)} to{transform:translateX(300%)} }
+    @keyframes pulse { 50%{opacity:.45} }
+    @media (prefers-reduced-motion:reduce) { * { animation:none!important } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="top"><h1>Mission Control</h1><div class="live" id="live" data-state="connecting"><span class="dot"></span><span id="connection">接続中</span></div></div>
+    <div class="stats">
+      <div class="stat"><b id="activeCount">–</b><span>実行中</span></div>
+      <div class="stat"><b id="agentCount">–</b><span>Agents</span></div>
+      <div class="stat"><b id="attentionCount">–</b><span>要確認</span></div>
+    </div>
+    <nav aria-label="表示フィルター">
+      <button data-filter="focus" aria-selected="true">進行中</button>
+      <button data-filter="all" aria-selected="false">すべて</button>
+      <button data-filter="agents" aria-selected="false">Agents</button>
+    </nav>
+  </header>
+  <main>
+    <div class="notice"><span id="message">状態を取得しています</span><time id="updated">–</time></div>
+    <div id="tasks" aria-live="polite"></div>
+  </main>
+  <footer>3秒ごとに自動更新 · ローカル接続のみ · 完了率は推測しません</footer>
+  <script>
+    const labels={active:"実行中",systemError:"要確認",idle:"待機中",notLoaded:"未読込",unknown:"不明"};
+    const priority={active:0,systemError:1,idle:2,notLoaded:3,unknown:4};
+    let snapshot={threads:[]}, filter="focus";
+    const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[char]);
+    const relative=time=>{const seconds=Math.max(0,Math.round((Date.now()-time)/1000));if(seconds<10)return"たった今";if(seconds<60)return`${seconds}秒前`;if(seconds<3600)return`${Math.floor(seconds/60)}分前`;if(seconds<86400)return`${Math.floor(seconds/3600)}時間前`;return`${Math.floor(seconds/86400)}日前`};
+    const flag=flags=>flags?.includes("waitingOnApproval")?"承認待ち":flags?.includes("waitingOnUserInput")?"入力待ち":null;
+    function card(thread,children=[]){const status=labels[thread.status]||labels.unknown;const note=flag(thread.activeFlags);return `<article class="${escapeHtml(thread.status)} ${thread.isSubagent?"agent":""}"><div class="task-head"><div class="task-title">${escapeHtml(thread.title)}</div><span class="pill ${escapeHtml(thread.status)}">${escapeHtml(note||status)}</span></div><div class="meta"><span>${escapeHtml(thread.project)}</span><span>${relative(thread.updatedAt)}</span>${thread.isSubagent?`<span>${escapeHtml(thread.agentKind||"subagent")}</span>`:""}</div><div class="progress" role="progressbar" aria-label="${escapeHtml(status)}"><i></i></div>${children.length?`<div class="children">${children.map(child=>card(child)).join("")}</div>`:""}</article>`}
+    function render(){const threads=snapshot.threads||[];const byParent=new Map();for(const thread of threads){if(thread.parentId){const list=byParent.get(thread.parentId)||[];list.push(thread);byParent.set(thread.parentId,list)}}const roots=threads.filter(thread=>!thread.parentId||!threads.some(item=>item.id===thread.parentId));const visible=root=>{const family=[root,...(byParent.get(root.id)||[])];return filter==="all"||filter==="agents"&&family.some(item=>item.isSubagent)||filter==="focus"&&family.some(item=>item.status==="active"||item.status==="systemError")};const sorted=roots.filter(visible).sort((a,b)=>(priority[a.status]??9)-(priority[b.status]??9)||b.updatedAt-a.updatedAt);document.querySelector("#tasks").innerHTML=sorted.length?sorted.map(root=>card(root,(byParent.get(root.id)||[]).sort((a,b)=>a.updatedAt-b.updatedAt))).join(""):`<div class="empty">${filter==="focus"?"現在、進行中のタスクはありません":"表示できるタスクがありません"}</div>`;const active=threads.filter(t=>t.status==="active").length;document.querySelector("#activeCount").textContent=active;document.querySelector("#agentCount").textContent=threads.filter(t=>t.isSubagent&&t.status==="active").length;document.querySelector("#attentionCount").textContent=threads.filter(t=>t.status==="systemError").length;document.querySelector("#message").textContent=snapshot.message||"";document.querySelector("#updated").textContent=snapshot.updatedAt?relative(snapshot.updatedAt):"–";document.querySelector("#live").dataset.state=snapshot.connection;document.querySelector("#connection").textContent=snapshot.connection==="live"?"LIVE":snapshot.connection==="offline"?"OFFLINE":"接続中"}
+    document.querySelectorAll("nav button").forEach(button=>button.addEventListener("click",()=>{filter=button.dataset.filter;document.querySelectorAll("nav button").forEach(item=>item.setAttribute("aria-selected",String(item===button)));render()}));
+    const events=new EventSource("/events");events.onmessage=event=>{snapshot=JSON.parse(event.data);render()};events.onerror=()=>{snapshot.connection="offline";snapshot.message="再接続しています";render()};setInterval(render,1000);
+  </script>
+</body>
+</html>

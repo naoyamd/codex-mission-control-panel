@@ -1,0 +1,36 @@
+{
+  "name": "codex-mission-control-panel",
+  "version": "0.1.0",
+  "description": "A tiny local dashboard for Codex task and subagent status.",
+  "type": "module",
+  "bin": {
+    "codex-mission-control": "./server.mjs"
+  },
+  "files": [
+    "index.html",
+    "server.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node server.mjs",
+    "check": "node --check server.mjs && node server.mjs --self-check"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/naoyamd/codex-mission-control-panel.git"
+  },
+  "homepage": "https://github.com/naoyamd/codex-mission-control-panel#readme",
+  "bugs": "https://github.com/naoyamd/codex-mission-control-panel/issues",
+  "keywords": [
+    "codex",
+    "dashboard",
+    "mission-control",
+    "openai"
+  ],
+  "author": "naoyamd",
+  "license": "MIT"
+}
