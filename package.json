@@ -1,6 +1,6 @@
 {
   "name": "codex-mission-control-panel",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
   "description": "A local Mission Control dashboard for Codex tasks, agents, context, and usage.",
   "type": "module",
@@ -10,12 +10,13 @@
   "files": [
     "index.html",
     "server.mjs",
+    "scripts/check-index.mjs",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs && node server.mjs --self-check"
+    "check": "node --check server.mjs && node server.mjs --self-check && node scripts/check-index.mjs"
   },
   "engines": {
     "node": ">=18"

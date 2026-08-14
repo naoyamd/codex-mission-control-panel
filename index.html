@@ -38,7 +38,12 @@
     nav { display:flex; gap:5px; padding:0 12px 10px }
     nav button { flex:1; padding:7px 8px; border:1px solid var(--line); border-radius:9px; color:var(--muted); background:transparent; cursor:pointer }
     nav button[aria-pressed="true"] { color:var(--text); background:#272c35; border-color:#404853 }
-    nav button:focus-visible, .task-select:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
+    nav button:focus-visible, .task-select:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
+    .tools { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:7px; padding:0 12px 10px }
+    .tools input, .tools select { min-width:0; height:32px; border:1px solid var(--line); border-radius:9px; color:var(--text); background:#11151b; font:10px system-ui,-apple-system,"Segoe UI",sans-serif }
+    .tools input { width:100%; padding:0 10px }
+    .tools select { padding:0 25px 0 9px }
+    .tools input::placeholder { color:#707a88 }
     .notice { display:flex; justify-content:space-between; gap:10px; padding:0 14px 9px; color:var(--muted); font-size:10px }
     #tasks { padding:0 10px 10px }
     article { margin-bottom:7px; padding:10px; border:1px solid var(--line); border-radius:12px; background:var(--panel); box-shadow:0 5px 18px #0002; transition:border-color .15s,background .15s }
@@ -53,12 +58,17 @@
     .pill.systemError { color:var(--error); background:#ff718518 }
     .pill.idle { color:var(--warn); background:#ffca6715 }
     .meta { display:flex; flex-wrap:wrap; gap:4px 9px; margin-top:6px; color:var(--muted); font-size:9px }
+    .specs { display:flex; flex-wrap:wrap; gap:5px; margin-top:7px }
+    .spec { padding:2px 6px; border:1px solid #343c49; border-radius:6px; color:#c6cfdd; background:#11151b; font:9px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace }
+    .spec-label { margin-right:5px; color:#778499; font:700 7px/1 system-ui,-apple-system,"Segoe UI",sans-serif; letter-spacing:.08em }
+    .spec.unknown { color:#77808d }
     .activity-line { display:none; height:3px; margin-top:8px; overflow:hidden; border-radius:3px; background:#292f38 }
     .activity-line i { display:block; width:35%; height:100%; border-radius:inherit; background:var(--quiet) }
     .active > .activity-line, .systemError > .activity-line { display:block }
     .active > .activity-line i { background:linear-gradient(90deg,transparent,var(--active),transparent); animation:run 1.4s linear infinite }
     .systemError > .activity-line i { width:100%; background:var(--error) }
     .children { margin:9px 0 0 7px; padding-left:8px; border-left:2px solid #303744 }
+    .children summary { margin:0 0 7px; color:var(--muted); cursor:pointer; font-size:9px; list-style-position:inside }
     .children article { margin-bottom:6px; padding:8px 9px; background:#101318 }
     .agent .task-title::before { content:"↳ "; color:var(--active) }
     .empty { padding:42px 12px; text-align:center; color:var(--muted) }
@@ -102,7 +112,7 @@
 <body>
   <header class="appbar">
     <div class="appbar-inner">
-      <div class="brand"><div class="mark" aria-hidden="true">M</div><div><div class="eyebrow">Codex</div><h1>Mission Control</h1></div></div>
+      <div class="brand"><div class="mark" aria-hidden="true">M</div><div><div class="eyebrow">Codex · v1.2</div><h1>Mission Control</h1></div></div>
       <div class="live" id="live" data-state="connecting"><span class="dot" aria-hidden="true"></span><span id="connection" aria-live="polite">接続中</span></div>
     </div>
   </header>
@@ -119,8 +129,16 @@
         <button data-filter="focus" aria-pressed="false">進行中</button>
         <button data-filter="agents" aria-pressed="false">Agents</button>
       </nav>
+      <div class="tools">
+        <input id="taskSearch" type="search" aria-label="タスクを検索" placeholder="タスク・プロジェクト・モデルを検索">
+        <select id="taskSort" aria-label="タスクの並び替え">
+          <option value="priority">優先順</option>
+          <option value="updated">更新順</option>
+          <option value="project">プロジェクト順</option>
+        </select>
+      </div>
       <div class="notice"><span id="message">状態を取得しています</span><time id="updated">–</time></div>
-      <div id="tasks"></div>
+      <div id="tasks" aria-label="タスク一覧"></div>
     </section>
 
     <aside class="pane status-pane" aria-labelledby="statusTitle">
@@ -147,7 +165,8 @@
     const priority={active:0,systemError:1,idle:2,notLoaded:3,unknown:4};
     const numberFormat=new Intl.NumberFormat("ja-JP");
     const compactFormat=new Intl.NumberFormat("ja-JP",{notation:"compact",maximumFractionDigits:1});
-    let snapshot={threads:[],threadsReady:false,usage:{}}, filter="all", statusView="overview", selectedId=null;
+    let saved={};try{saved=JSON.parse(localStorage.getItem("mission-control-ui")||"{}")||{}}catch{}
+    let snapshot={threads:[],threadsReady:false,usage:{}}, filter=["all","focus","agents"].includes(saved.filter)?saved.filter:"all", statusView=["overview","details"].includes(saved.statusView)?saved.statusView:"overview", selectedId=saved.selectedId||null, query=typeof saved.query==="string"?saved.query:"", sortBy=["priority","updated","project"].includes(saved.sortBy)?saved.sortBy:"priority", collapsed=new Set(Array.isArray(saved.collapsed)?saved.collapsed:[]);
     const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[char]);
     const relative=time=>{const seconds=Math.max(0,Math.round((Date.now()-time)/1000));if(seconds<10)return"たった今";if(seconds<60)return`${seconds}秒前`;if(seconds<3600)return`${Math.floor(seconds/60)}分前`;if(seconds<86400)return`${Math.floor(seconds/3600)}時間前`;return`${Math.floor(seconds/86400)}日前`};
     const flag=flags=>flags?.includes("waitingOnApproval")?"承認待ち":flags?.includes("waitingOnUserInput")?"入力待ち":null;
@@ -155,17 +174,23 @@
     const exact=value=>value==null?"":numberFormat.format(value);
     const percent=value=>Math.max(0,Math.min(100,Number(value)||0));
     const progressClass=value=>value>=90?"danger":value>=70?"warn":"";
-    function resetAt(time){if(!time)return"リセット時刻なし";const date=new Date(time);return`${date.toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})} にリセット`}
+    const remainingClass=value=>value<=10?"danger":value<=30?"warn":"";
+    function saveUi(){try{localStorage.setItem("mission-control-ui",JSON.stringify({filter,statusView,selectedId,query,sortBy,collapsed:[...collapsed]}))}catch{}}
+    function resetAt(time){if(!time)return"リセット時刻なし";const date=new Date(time);const remaining=time-Date.now();const left=remaining<=0?"まもなく":remaining<86400000?`あと${Math.ceil(remaining/3600000)}時間`:`あと${Math.ceil(remaining/86400000)}日`;return`リセット: ${date.toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})} · ${left}`}
     function family(thread,byParent){return [thread,...(byParent.get(thread.id)||[]).flatMap(child=>family(child,byParent))]}
-    function card(thread,byParent){const status=labels[thread.status]||labels.unknown;const note=flag(thread.activeFlags);const children=(byParent.get(thread.id)||[]).sort((a,b)=>a.updatedAt-b.updatedAt);return `<article class="${escapeHtml(thread.status)} ${thread.isSubagent?"agent":""} ${thread.id===selectedId?"selected":""}"><div class="task-head"><button class="task-select" data-thread-id="${escapeHtml(thread.id)}" aria-pressed="${thread.id===selectedId}"><span class="task-title">${escapeHtml(thread.title)}</span><span class="meta"><span>${escapeHtml(thread.project)}</span><span>${relative(thread.updatedAt)}</span>${thread.isSubagent?`<span>${escapeHtml(thread.agentKind||"subagent")}</span>`:""}</span></button><span class="pill ${escapeHtml(thread.status)}">${escapeHtml(note||status)}</span></div><div class="activity-line" aria-hidden="true"><i></i></div>${children.length?`<div class="children">${children.map(child=>card(child,byParent)).join("")}</div>`:""}</article>`}
+    function contextSpec(thread){const used=thread.context?.usedTokens,total=thread.context?.contextWindow;if(used==null||!total)return"";const remaining=percent(100-used/total*100);return`<span class="spec" title="${exact(used)} / ${exact(total)} tokens 使用"><span class="spec-label">CTX</span>残り${Math.round(remaining)}%</span>`}
+    function specs(thread){return `<span class="specs"><span class="spec ${thread.model?"":"unknown"}"><span class="spec-label">MODEL</span>${escapeHtml(thread.model||"不明")}</span><span class="spec ${thread.effort?"":"unknown"}"><span class="spec-label">EFFORT</span>${escapeHtml(thread.effort||"不明")}</span>${contextSpec(thread)}</span>`}
+    function card(thread,byParent){const status=labels[thread.status]||labels.unknown;const note=flag(thread.activeFlags);const children=(byParent.get(thread.id)||[]).sort((a,b)=>a.updatedAt-b.updatedAt);return `<article class="${escapeHtml(thread.status)} ${thread.isSubagent?"agent":""} ${thread.id===selectedId?"selected":""}"><div class="task-head"><button class="task-select" data-thread-id="${escapeHtml(thread.id)}" aria-pressed="${thread.id===selectedId}"><span class="task-title">${escapeHtml(thread.title)}</span><span class="meta"><span>${escapeHtml(thread.project)}</span><span>${relative(thread.updatedAt)}</span>${thread.isSubagent?`<span>${escapeHtml(thread.agentKind||"subagent")}</span>`:""}</span>${specs(thread)}</button><span class="pill ${escapeHtml(thread.status)}">${escapeHtml(note||status)}</span></div><div class="activity-line" aria-hidden="true"><i></i></div>${children.length?`<details class="children" data-thread-group="${escapeHtml(thread.id)}" ${collapsed.has(thread.id)?"":"open"}><summary>${children.length} Agents</summary>${children.map(child=>card(child,byParent)).join("")}</details>`:""}</article>`}
     function renderTasks(){
       const threads=snapshot.threads||[];
       if(!threads.some(thread=>thread.id===selectedId))selectedId=threads.find(thread=>thread.status==="active"&&!thread.isSubagent)?.id||threads.find(thread=>thread.status==="active")?.id||threads[0]?.id||null;
       const byParent=new Map();
       for(const thread of threads){if(thread.parentId){const list=byParent.get(thread.parentId)||[];list.push(thread);byParent.set(thread.parentId,list)}}
       const roots=threads.filter(thread=>!thread.parentId||!threads.some(item=>item.id===thread.parentId));
-      const visible=root=>{const group=family(root,byParent);return filter==="all"||filter==="agents"&&group.some(item=>item.isSubagent)||filter==="focus"&&group.some(item=>item.status==="active"||item.status==="systemError")};
-      const sorted=roots.filter(visible).sort((a,b)=>Number(b.isPinned)-Number(a.isPinned)||(priority[a.status]??9)-(priority[b.status]??9)||b.updatedAt-a.updatedAt);
+      const term=query.trim().toLocaleLowerCase("ja");
+      const visible=root=>{const group=family(root,byParent);const matchesFilter=filter==="all"||filter==="agents"&&group.some(item=>item.isSubagent)||filter==="focus"&&group.some(item=>item.status==="active"||item.status==="systemError");const matchesSearch=!term||group.some(item=>[item.title,item.project,item.model,item.effort,item.agentKind].some(value=>String(value||"").toLocaleLowerCase("ja").includes(term)));return matchesFilter&&matchesSearch};
+      const compare=(a,b)=>Number(b.isPinned)-Number(a.isPinned)||(sortBy==="updated"?b.updatedAt-a.updatedAt:sortBy==="project"?String(a.project).localeCompare(String(b.project),"ja")||b.updatedAt-a.updatedAt:(priority[a.status]??9)-(priority[b.status]??9)||b.updatedAt-a.updatedAt);
+      const sorted=roots.filter(visible).sort(compare);
       document.querySelector("#tasks").innerHTML=sorted.length?sorted.map(root=>card(root,byParent)).join(""):`<div class="empty">${!snapshot.threadsReady?"タスクを読み込み中…":filter==="focus"?"現在、進行中のタスクはありません":"表示できるタスクがありません"}</div>`;
       document.querySelector("#taskCount").textContent=`${sorted.length}件 / 全${roots.length}件`;
       document.querySelector("#activeCount").textContent=threads.filter(thread=>thread.status==="active").length;
@@ -179,14 +204,14 @@
       const used=context?.usedTokens||0;
       const total=context?.contextWindow||0;
       const ratio=total?used/total*100:0;
-      document.querySelector("#threadStatus").innerHTML=`<h3 id="threadStatusTitle">選択タスク</h3><div class="status-title">${escapeHtml(thread.title)}</div><code title="${escapeHtml(thread.id)}">${escapeHtml(thread.id)}</code>${context?`<div class="usage-row"><div><strong>${Math.round(ratio)}%</strong> <span>コンテキスト使用</span></div><span title="${exact(used)} / ${exact(total)} tokens">${formatTokens(used)} / ${formatTokens(total)}</span></div><progress class="${progressClass(ratio)}" max="100" value="${percent(ratio)}" aria-label="コンテキスト使用率 ${Math.round(ratio)}%"></progress>`:'<div class="unavailable" style="margin-top:10px">このタスクのコンテキスト情報はまだありません</div>'}`;
+      document.querySelector("#threadStatus").innerHTML=`<h3 id="threadStatusTitle">選択タスク</h3><div class="status-title">${escapeHtml(thread.title)}</div>${specs(thread)}<code title="${escapeHtml(thread.id)}">${escapeHtml(thread.id)}</code>${context?`<div class="usage-row"><div><strong>${Math.round(ratio)}%</strong> <span>コンテキスト使用</span></div><span title="${exact(used)} / ${exact(total)} tokens">${formatTokens(used)} / ${formatTokens(total)}</span></div><progress class="${progressClass(ratio)}" max="100" value="${percent(ratio)}" aria-label="コンテキスト使用率 ${Math.round(ratio)}%"></progress>`:'<div class="unavailable" style="margin-top:10px">このタスクのコンテキスト情報はまだありません</div>'}`;
     }
     function renderLimits(){
       const usage=snapshot.usage||{};
       const limit=(usage.limits||[]).find(item=>item.id==="codex");
       const windows=(limit?.windows||[]).filter(window=>window.windowDurationMins>=10080);
       document.querySelector("#plan").textContent=usage.plan?String(usage.plan).toUpperCase():usage.status==="loading"?"確認中":"未取得";
-      document.querySelector("#limits").innerHTML=windows.length?windows.map(window=>`<div class="limit"><div class="usage-row"><strong>${Math.round(window.usedPercent)}%</strong><span>${window.reached?"上限到達":"使用済み"}</span></div><progress class="${progressClass(window.usedPercent)}" max="100" value="${percent(window.usedPercent)}" aria-label="Codex 週上限 使用率 ${Math.round(window.usedPercent)}%"></progress><div class="reset">${resetAt(window.resetsAt)}</div></div>`).join(""):'<div class="unavailable" style="margin-top:10px">週上限を取得できません</div>';
+      document.querySelector("#limits").innerHTML=windows.length?windows.map(window=>{const remaining=percent(100-window.usedPercent);return`<div class="limit"><div class="usage-row"><strong>残り${Math.round(remaining)}%</strong><span>${resetAt(window.resetsAt)}</span></div><progress class="${remainingClass(remaining)}" max="100" value="${remaining}" aria-label="Codex 週上限 残り ${Math.round(remaining)}%"></progress></div>`}).join(""):'<div class="unavailable" style="margin-top:10px">週上限を取得できません</div>';
     }
     function renderActivity(){
       const activity=snapshot.usage?.activity;
@@ -208,9 +233,16 @@
       document.querySelector("#usageMessage").textContent=snapshot.usage?.message||"";
       document.querySelector("#usageUpdated").textContent=snapshot.usage?.updatedAt?`更新 ${relative(snapshot.usage.updatedAt)}`:"";
     }
-    document.querySelectorAll("[data-filter]").forEach(button=>button.addEventListener("click",()=>{filter=button.dataset.filter;document.querySelectorAll("[data-filter]").forEach(item=>item.setAttribute("aria-pressed",String(item===button)));render()}));
-    document.querySelectorAll("[data-status-view]").forEach(button=>button.addEventListener("click",()=>{statusView=button.dataset.statusView;document.querySelectorAll("[data-status-view]").forEach(item=>item.setAttribute("aria-pressed",String(item===button)));document.querySelector("#overviewPanel").hidden=statusView!=="overview";document.querySelector("#detailsPanel").hidden=statusView!=="details"}));
-    document.querySelector("#tasks").addEventListener("click",event=>{const button=event.target.closest(".task-select");if(!button)return;selectedId=button.dataset.threadId;render()});
+    document.querySelector("#taskSearch").value=query;document.querySelector("#taskSort").value=sortBy;
+    document.querySelectorAll("[data-filter]").forEach(button=>{button.setAttribute("aria-pressed",String(button.dataset.filter===filter));button.addEventListener("click",()=>{filter=button.dataset.filter;document.querySelectorAll("[data-filter]").forEach(item=>item.setAttribute("aria-pressed",String(item===button)));saveUi();render()})});
+    document.querySelectorAll("[data-status-view]").forEach(button=>{button.setAttribute("aria-pressed",String(button.dataset.statusView===statusView));button.addEventListener("click",()=>{statusView=button.dataset.statusView;document.querySelectorAll("[data-status-view]").forEach(item=>item.setAttribute("aria-pressed",String(item===button)));document.querySelector("#overviewPanel").hidden=statusView!=="overview";document.querySelector("#detailsPanel").hidden=statusView!=="details";saveUi()})});
+    document.querySelector("#overviewPanel").hidden=statusView!=="overview";document.querySelector("#detailsPanel").hidden=statusView!=="details";
+    document.querySelector("#taskSearch").addEventListener("input",event=>{query=event.target.value;saveUi();render()});
+    document.querySelector("#taskSearch").addEventListener("keydown",event=>{if(event.key==="Escape"&&query){query="";event.currentTarget.value="";saveUi();render()}});
+    document.querySelector("#taskSort").addEventListener("change",event=>{sortBy=event.target.value;saveUi();render()});
+    document.querySelector("#tasks").addEventListener("click",event=>{const button=event.target.closest(".task-select");if(!button)return;selectedId=button.dataset.threadId;saveUi();render()});
+    document.querySelector("#tasks").addEventListener("toggle",event=>{const details=event.target.closest("details[data-thread-group]");if(!details)return;details.open?collapsed.delete(details.dataset.threadGroup):collapsed.add(details.dataset.threadGroup);saveUi()},true);
+    document.addEventListener("keydown",event=>{if(event.key==="/"&&!event.ctrlKey&&!event.metaKey&&!/^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName)){event.preventDefault();document.querySelector("#taskSearch").focus()}});
     const events=new EventSource("/events");
     events.onmessage=event=>{snapshot=JSON.parse(event.data);render()};
     events.onerror=()=>{snapshot.connection="offline";snapshot.message="再接続しています";render()};

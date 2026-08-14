@@ -2,10 +2,13 @@
 
 A dependency-free local dashboard for Codex tasks, agents, context, and usage.
 
-Version 1.0 shows every task by default and uses a responsive split layout:
+Version 1.2 shows every task by default and uses a responsive split layout:
 
-- **Tasks:** live state, attention flags, pin priority, and nested subagents.
-- **Usage:** the Codex weekly limit is the default view. Selected chat context
+- **Tasks:** live state, model, reasoning effort, remaining context, attention
+  flags, pin priority, and nested subagents.
+- **Navigation:** search by task, project, model, or effort; switch sort order;
+  collapse agent trees; and keep the chosen view across reloads.
+- **Usage:** remaining Codex weekly capacity is the default view. Selected chat context
   and token activity live on a separate details screen; dedicated Spark limits
   stay out of the way.
 - **Responsive:** two panes on wide screens and a compact stacked view in the
@@ -61,6 +64,7 @@ publication. Distribution is currently through the public GitHub repository.
 - The HTTP server binds to `127.0.0.1` only.
 - Task titles and project names stay on the local machine.
 - Recent local Codex session metadata is read to supplement live status.
+- Model and reasoning effort come from each session's latest recorded turn settings.
 - Rate limits and token activity come from the authenticated Codex App Server.
 - Token activity may be unavailable with API-key-only or Bedrock authentication.
 - Completion percentages are not guessed; active work uses an indeterminate bar.

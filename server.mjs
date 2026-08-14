@@ -5,10 +5,10 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { open, readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const version = "1.0.0";
+const version = "1.2.0";
 const here = dirname(fileURLToPath(import.meta.url));
 const sourceKinds = [
   "cli", "vscode", "exec", "appServer", "subAgent", "subAgentReview",
@@ -22,6 +22,7 @@ let appServer;
 let stdoutBuffer = "";
 let requestId = 0;
 let reconnectTimer;
+let refreshing = false;
 let state = {
   connection: "connecting",
   updatedAt: Date.now(),
@@ -67,6 +68,8 @@ function normalizedThread(thread) {
     isSubagent: Boolean(agent || thread.parentThreadId),
     agentKind: agent,
     context: null,
+    model: null,
+    effort: null,
   };
 }
 
@@ -80,6 +83,23 @@ function normalizedContext(info) {
   const usedTokens = finite(last?.totalTokens ?? last?.total_tokens);
   const contextWindow = finite(info?.modelContextWindow ?? info?.model_context_window);
   return usedTokens != null && contextWindow ? { usedTokens, contextWindow } : null;
+}
+
+function normalizedSettings(event) {
+  const payload = event?.payload || {};
+  const settings = payload.threadSettings || payload.thread_settings || payload;
+  return {
+    model: settings.model || null,
+    effort: settings.effort || settings.reasoningEffort || settings.reasoning_effort || payload.effort || null,
+  };
+}
+
+function safeSessionPath(value) {
+  if (typeof value !== "string" || !value.endsWith(".jsonl")) return null;
+  const sessions = resolve(codexHome, "sessions");
+  const candidate = resolve(value);
+  const inside = relative(sessions, candidate);
+  return inside && !inside.startsWith("..") && !isAbsolute(inside) ? candidate : null;
 }
 
 function normalizedWindow(kind, window) {
@@ -243,21 +263,27 @@ async function readSessionStatus(path) {
   if (cached?.size === info.size && cached.mtimeMs === info.mtimeMs) return cached.value;
   const handle = await open(path, "r");
   try {
-    const firstSize = Math.min(info.size, 64 * 1024);
+    const firstSize = Math.min(info.size, 256 * 1024);
     const first = Buffer.alloc(firstSize);
     await handle.read(first, 0, firstSize, 0);
-    const firstLine = first.toString("utf8").split(/\r?\n/, 1)[0];
+    const headText = first.toString("utf8");
+    const firstLine = headText.split(/\r?\n/, 1)[0];
     const meta = JSON.parse(firstLine).payload || {};
-    const tailSize = Math.min(info.size, 2 * 1024 * 1024);
+    const tailSize = Math.min(info.size, 512 * 1024);
     const tail = Buffer.alloc(tailSize);
     await handle.read(tail, 0, tailSize, info.size - tailSize);
     const text = tail.toString("utf8");
-    const matches = [...text.matchAll(/"type":"(task_started|task_complete|task_aborted)"/g)];
-    const last = matches.at(-1)?.[1];
+    const eventPattern = /"type":"(task_started|task_complete|task_aborted)"/g;
+    const last = [...headText.matchAll(eventPattern), ...text.matchAll(eventPattern)].at(-1)?.[1];
     if (!meta.id || !last) return null;
-    const tokenLine = text.split(/\r?\n/).findLast((line) => line.includes('"type":"token_count"'));
+    const headLines = headText.split(/\r?\n/);
+    const lines = text.split(/\r?\n/);
+    const tokenLine = lines.findLast((line) => line.includes('"type":"token_count"')) || headLines.findLast((line) => line.includes('"type":"token_count"'));
+    const settingsLine = lines.findLast((line) => line.includes('"type":"turn_context"') || line.includes('"type":"thread_settings_applied"')) || headLines.findLast((line) => line.includes('"type":"turn_context"') || line.includes('"type":"thread_settings_applied"'));
     let context = null;
+    let settings = { model: null, effort: null };
     try { context = normalizedContext(JSON.parse(tokenLine)?.payload?.info); } catch { /* no complete token line in tail */ }
+    try { settings = normalizedSettings(JSON.parse(settingsLine)); } catch { /* no complete settings line in tail */ }
     const stale = Date.now() - info.mtimeMs > 30 * 60 * 1000;
     const value = {
       id: meta.id,
@@ -269,6 +295,7 @@ async function readSessionStatus(path) {
       activeFlags: [],
       updatedAt: info.mtimeMs,
       context,
+      ...settings,
     };
     sessionCache.set(path, { size: info.size, mtimeMs: info.mtimeMs, value });
     return value;
@@ -279,7 +306,8 @@ async function readSessionStatus(path) {
 
 async function mergeRuntime(threads) {
   const map = new Map(threads.map((thread) => [thread.id, normalizedThread(thread)]));
-  const runtime = (await Promise.all((await recentRollouts()).map((path) => readSessionStatus(path).catch(() => null)))).filter(Boolean);
+  const paths = new Set([...threads.map((thread) => safeSessionPath(thread.path)).filter(Boolean), ...await recentRollouts()]);
+  const runtime = (await Promise.all([...paths].map((path) => readSessionStatus(path).catch(() => null)))).filter(Boolean);
   for (const item of runtime) {
     const existing = map.get(item.id);
     if (existing) {
@@ -289,6 +317,8 @@ async function mergeRuntime(threads) {
       existing.parentId ||= item.parentId;
       existing.isSubagent ||= item.isSubagent;
       existing.context = item.context || existing.context;
+      existing.model = item.model || existing.model;
+      existing.effort = item.effort || existing.effort;
     } else if (item.status !== "idle") {
       map.set(item.id, {
         ...item,
@@ -301,7 +331,8 @@ async function mergeRuntime(threads) {
 }
 
 async function refresh() {
-  if (state.connection !== "live") return;
+  if (state.connection !== "live" || refreshing) return;
+  refreshing = true;
   try {
     state.threads = await mergeRuntime(await listThreads());
     state.threadsReady = true;
@@ -311,6 +342,8 @@ async function refresh() {
   } catch (error) {
     state.message = `更新待ち: ${error.message}`;
     publish();
+  } finally {
+    refreshing = false;
   }
 }
 
@@ -383,6 +416,9 @@ function selfCheck() {
   assert.equal(child.parentId, "root");
   assert.equal(child.isSubagent, true);
   assert.deepEqual(normalizedContext({ last_token_usage: { total_tokens: 250 }, model_context_window: 1000 }), { usedTokens: 250, contextWindow: 1000 });
+  assert.deepEqual(normalizedSettings({ payload: { model: "gpt-test", effort: "high" } }), { model: "gpt-test", effort: "high" });
+  assert.equal(safeSessionPath(join(codexHome, "sessions", "test.jsonl"))?.endsWith("test.jsonl"), true);
+  assert.equal(safeSessionPath(join(codexHome, "outside.jsonl")), null);
   assert.equal(normalizedLimits({ rateLimits: { limitId: "codex", primary: { usedPercent: 25, windowDurationMins: 60, resetsAt: 100 } } })[0].windows[0].resetsAt, 100_000);
   console.log("SELF_CHECK_OK");
 }
