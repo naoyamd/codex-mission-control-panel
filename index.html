@@ -100,7 +100,7 @@
     footer { padding:4px 14px 18px; color:#697383; font-size:9px; text-align:center }
     @keyframes run { from{transform:translateX(-110%)} to{transform:translateX(300%)} }
     @keyframes pulse { 50%{opacity:.45} }
-    @media (min-width:820px) {
+    @media (min-width:720px) {
       .workspace { grid-template-columns:1fr }
       .status-pane { order:-1; display:grid; grid-template-columns:minmax(220px,300px) minmax(0,1fr); align-items:start }
       .status-pane > .pane-head { padding-bottom:8px }
@@ -111,7 +111,7 @@
       #tasks > article { display:inline-block; width:100%; break-inside:avoid-column }
       #tasks > .empty { column-span:all }
     }
-    @media (max-width:819px) { .status-pane { grid-row:1 } }
+    @media (max-width:719px) { .status-pane { grid-row:1 } }
     @media (max-width:420px) { .workspace { padding:8px }.pane { border-radius:13px }.appbar-inner { padding:11px 12px } }
     @media (prefers-reduced-motion:reduce) { * { scroll-behavior:auto!important; animation:none!important; transition:none!important } }
   </style>
@@ -119,7 +119,7 @@
 <body>
   <header class="appbar">
     <div class="appbar-inner">
-      <div class="brand"><div class="mark" aria-hidden="true">M</div><div><div class="eyebrow">Codex · v1.2.1</div><h1>Mission Control</h1></div></div>
+      <div class="brand"><div class="mark" aria-hidden="true">M</div><div><div class="eyebrow">Codex · v1.2.2</div><h1>Mission Control</h1></div></div>
       <div class="live" id="live" data-state="connecting"><span class="dot" aria-hidden="true"></span><span id="connection" aria-live="polite">接続中</span></div>
     </div>
   </header>
