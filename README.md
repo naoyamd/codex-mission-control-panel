@@ -2,7 +2,7 @@
 
 A dependency-free local dashboard for Codex tasks, agents, context, and usage.
 
-Version 1.2 shows every task by default and uses a responsive split layout:
+Version 1.2.1 shows every task by default and uses a responsive overview layout:
 
 - **Tasks:** live state, model, reasoning effort, remaining context, attention
   flags, pin priority, and nested subagents.
@@ -11,8 +11,8 @@ Version 1.2 shows every task by default and uses a responsive split layout:
 - **Usage:** remaining Codex weekly capacity is the default view. Selected chat context
   and token activity live on a separate details screen; dedicated Spark limits
   stay out of the way.
-- **Responsive:** two panes on wide screens and a compact stacked view in the
-  Codex side panel.
+- **Responsive:** a compact usage strip and multi-column task overview on wide
+  screens, with a single-column stacked view in the Codex side panel.
 
 > This is an independent community project, not an official OpenAI product.
 > It uses the experimental Codex App Server interface described in the
