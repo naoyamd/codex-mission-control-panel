@@ -29,7 +29,9 @@
     .pane-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:15px 15px 12px }
     h2 { margin:0; font-size:14px }
     .subtle { margin-top:2px; color:var(--muted); font-size:10px }
+    .task-actions { display:flex; align-items:center; gap:6px }
     .count, .plan { padding:3px 8px; border:1px solid var(--line); border-radius:999px; color:var(--muted); background:#171b22; font-size:10px; white-space:nowrap }
+    .bulk-toggle { padding:3px 8px; border:1px solid #3c4864; border-radius:999px; color:#bdcaff; background:#252e431f; font-size:10px; white-space:nowrap; cursor:pointer }
     .plan { color:#bdcaff; border-color:#3c4864; background:#252e431f }
     .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; padding:0 12px 11px }
     .stat { padding:9px 10px; border:1px solid var(--line); border-radius:11px; background:var(--panel-2) }
@@ -38,7 +40,7 @@
     nav { display:flex; gap:5px; padding:0 12px 10px }
     nav button { flex:1; padding:7px 8px; border:1px solid var(--line); border-radius:9px; color:var(--muted); background:transparent; cursor:pointer }
     nav button[aria-pressed="true"] { color:var(--text); background:#272c35; border-color:#404853 }
-    nav button:focus-visible, .task-select:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
+    nav button:focus-visible, .task-select:focus-visible, .bulk-toggle:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px }
     .tools { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:7px; padding:0 12px 10px }
     .tools input, .tools select { min-width:0; height:32px; border:1px solid var(--line); border-radius:9px; color:var(--text); background:#11151b; font:10px system-ui,-apple-system,"Segoe UI",sans-serif }
     .tools input { width:100%; padding:0 10px }
@@ -47,6 +49,7 @@
     .notice { display:flex; justify-content:space-between; gap:10px; padding:0 14px 9px; color:var(--muted); font-size:10px }
     #tasks { padding:0 10px 10px }
     article { margin-bottom:7px; padding:10px; border:1px solid var(--line); border-radius:12px; background:var(--panel); box-shadow:0 5px 18px #0002; transition:border-color .15s,background .15s }
+    article[data-task-card] { cursor:pointer }
     article.selected { border-color:#657baa; background:#1a202b }
     article.active { border-left-color:var(--active) }
     article.systemError { border-left-color:var(--error) }
@@ -70,6 +73,10 @@
     .children { margin:9px 0 0 7px; padding-left:8px; border-left:2px solid #303744 }
     .children summary { margin:0 0 7px; color:var(--muted); cursor:pointer; font-size:9px; list-style-position:inside }
     .children article { margin-bottom:6px; padding:8px 9px; background:#101318 }
+    article.compact { padding:8px 10px }
+    article.compact > .task-head .meta, article.compact > .task-head .specs, article.compact > .activity-line, article.compact > .children article { display:none }
+    article.compact > .children { margin-top:4px }
+    article.compact > .children summary { margin:0 }
     .agent .task-title::before { content:"↳ "; color:var(--active) }
     .empty { padding:42px 12px; text-align:center; color:var(--muted) }
     .status-body { display:grid; gap:10px; padding:0 12px 12px }
@@ -119,13 +126,13 @@
 <body>
   <header class="appbar">
     <div class="appbar-inner">
-      <div class="brand"><div class="mark" aria-hidden="true">M</div><div><div class="eyebrow">Codex · v1.2.2</div><h1>Mission Control</h1></div></div>
+      <div class="brand"><div class="mark" aria-hidden="true">M</div><div><div class="eyebrow">Codex · v1.3.0</div><h1>Mission Control</h1></div></div>
       <div class="live" id="live" data-state="connecting"><span class="dot" aria-hidden="true"></span><span id="connection" aria-live="polite">接続中</span></div>
     </div>
   </header>
   <main class="workspace">
     <section class="pane tasks-pane" aria-labelledby="tasksTitle">
-      <div class="pane-head"><div><h2 id="tasksTitle">タスク</h2><div class="subtle">親タスクと Agents をまとめて表示</div></div><span class="count" id="taskCount">0件</span></div>
+      <div class="pane-head"><div><h2 id="tasksTitle">タスク</h2><div class="subtle">親タスクと Agents をまとめて表示</div></div><div class="task-actions"><button class="bulk-toggle" id="toggleCards" type="button">すべて最小</button><span class="count" id="taskCount">0件</span></div></div>
       <div class="stats">
         <div class="stat"><b id="activeCount">–</b><span>実行中</span></div>
         <div class="stat"><b id="agentCount">–</b><span>Agents</span></div>
@@ -173,7 +180,7 @@
     const numberFormat=new Intl.NumberFormat("ja-JP");
     const compactFormat=new Intl.NumberFormat("ja-JP",{notation:"compact",maximumFractionDigits:1});
     let saved={};try{saved=JSON.parse(localStorage.getItem("mission-control-ui")||"{}")||{}}catch{}
-    let snapshot={threads:[],threadsReady:false,usage:{}}, filter=["all","focus","agents"].includes(saved.filter)?saved.filter:"all", statusView=["overview","details"].includes(saved.statusView)?saved.statusView:"overview", selectedId=saved.selectedId||null, query=typeof saved.query==="string"?saved.query:"", sortBy=["priority","updated","project"].includes(saved.sortBy)?saved.sortBy:"priority", collapsed=new Set(Array.isArray(saved.collapsed)?saved.collapsed:[]);
+    let snapshot={threads:[],threadsReady:false,usage:{}}, filter=["all","focus","agents"].includes(saved.filter)?saved.filter:"all", statusView=["overview","details"].includes(saved.statusView)?saved.statusView:"overview", selectedId=saved.selectedId||null, query=typeof saved.query==="string"?saved.query:"", sortBy=["priority","updated","project"].includes(saved.sortBy)?saved.sortBy:"priority", collapsed=new Set(Array.isArray(saved.collapsed)?saved.collapsed:[]), compactCards=new Set(Array.isArray(saved.compactCards)?saved.compactCards:[]);
     const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[char]);
     const relative=time=>{const seconds=Math.max(0,Math.round((Date.now()-time)/1000));if(seconds<10)return"たった今";if(seconds<60)return`${seconds}秒前`;if(seconds<3600)return`${Math.floor(seconds/60)}分前`;if(seconds<86400)return`${Math.floor(seconds/3600)}時間前`;return`${Math.floor(seconds/86400)}日前`};
     const flag=flags=>flags?.includes("waitingOnApproval")?"承認待ち":flags?.includes("waitingOnUserInput")?"入力待ち":null;
@@ -182,24 +189,26 @@
     const percent=value=>Math.max(0,Math.min(100,Number(value)||0));
     const progressClass=value=>value>=90?"danger":value>=70?"warn":"";
     const remainingClass=value=>value<=10?"danger":value<=30?"warn":"";
-    function saveUi(){try{localStorage.setItem("mission-control-ui",JSON.stringify({filter,statusView,selectedId,query,sortBy,collapsed:[...collapsed]}))}catch{}}
+    function saveUi(){try{localStorage.setItem("mission-control-ui",JSON.stringify({filter,statusView,selectedId,query,sortBy,collapsed:[...collapsed],compactCards:[...compactCards]}))}catch{}}
     function resetAt(time){if(!time)return"リセット時刻なし";const date=new Date(time);const remaining=time-Date.now();const left=remaining<=0?"まもなく":remaining<86400000?`あと${Math.ceil(remaining/3600000)}時間`:`あと${Math.ceil(remaining/86400000)}日`;return`リセット: ${date.toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})} · ${left}`}
     function family(thread,byParent){return [thread,...(byParent.get(thread.id)||[]).flatMap(child=>family(child,byParent))]}
+    function rootTasks(threads){return threads.filter(thread=>!thread.parentId||!threads.some(item=>item.id===thread.parentId))}
     function contextSpec(thread){const used=thread.context?.usedTokens,total=thread.context?.contextWindow;if(used==null||!total)return"";const remaining=percent(100-used/total*100);return`<span class="spec" title="${exact(used)} / ${exact(total)} tokens 使用"><span class="spec-label">CTX</span>残り${Math.round(remaining)}%</span>`}
     function specs(thread){return `<span class="specs"><span class="spec ${thread.model?"":"unknown"}"><span class="spec-label">MODEL</span>${escapeHtml(thread.model||"不明")}</span><span class="spec ${thread.effort?"":"unknown"}"><span class="spec-label">EFFORT</span>${escapeHtml(thread.effort||"不明")}</span>${contextSpec(thread)}</span>`}
-    function card(thread,byParent){const status=labels[thread.status]||labels.unknown;const note=flag(thread.activeFlags);const children=(byParent.get(thread.id)||[]).sort((a,b)=>a.updatedAt-b.updatedAt);return `<article class="${escapeHtml(thread.status)} ${thread.isSubagent?"agent":""} ${thread.id===selectedId?"selected":""}"><div class="task-head"><button class="task-select" data-thread-id="${escapeHtml(thread.id)}" aria-pressed="${thread.id===selectedId}"><span class="task-title">${escapeHtml(thread.title)}</span><span class="meta"><span>${escapeHtml(thread.project)}</span><span>${relative(thread.updatedAt)}</span>${thread.isSubagent?`<span>${escapeHtml(thread.agentKind||"subagent")}</span>`:""}</span>${specs(thread)}</button><span class="pill ${escapeHtml(thread.status)}">${escapeHtml(note||status)}</span></div><div class="activity-line" aria-hidden="true"><i></i></div>${children.length?`<details class="children" data-thread-group="${escapeHtml(thread.id)}" ${collapsed.has(thread.id)?"":"open"}><summary>${children.length} Agents</summary>${children.map(child=>card(child,byParent)).join("")}</details>`:""}</article>`}
+    function card(thread,byParent){const status=labels[thread.status]||labels.unknown;const note=flag(thread.activeFlags);const children=(byParent.get(thread.id)||[]).sort((a,b)=>a.updatedAt-b.updatedAt);const compact=!thread.isSubagent&&compactCards.has(thread.id);const activeAgents=children.filter(child=>child.status==="active").length;const attentionAgents=children.filter(child=>child.status==="systemError").length;const agentSummary=`${children.length} Agents${activeAgents?` · ${activeAgents}実行中`:""}${attentionAgents?` · ${attentionAgents}要確認`:""}`;return `<article class="${escapeHtml(thread.status)} ${thread.isSubagent?"agent":""} ${thread.id===selectedId?"selected":""} ${compact?"compact":""}"${thread.isSubagent?"":` data-task-card="${escapeHtml(thread.id)}"`}><div class="task-head"><button class="task-select" data-thread-id="${escapeHtml(thread.id)}" aria-pressed="${thread.id===selectedId}"${thread.isSubagent?"":` aria-expanded="${!compact}" title="${compact?"展開":"最小表示"}"`}><span class="task-title">${escapeHtml(thread.title)}</span><span class="meta"><span>${escapeHtml(thread.project)}</span><span>${relative(thread.updatedAt)}</span>${thread.isSubagent?`<span>${escapeHtml(thread.agentKind||"subagent")}</span>`:""}</span>${specs(thread)}</button><span class="pill ${escapeHtml(thread.status)}">${escapeHtml(note||status)}</span></div><div class="activity-line" aria-hidden="true"><i></i></div>${children.length?`<details class="children" data-thread-group="${escapeHtml(thread.id)}" ${collapsed.has(thread.id)?"":"open"}><summary>${agentSummary}</summary>${children.map(child=>card(child,byParent)).join("")}</details>`:""}</article>`}
     function renderTasks(){
       const threads=snapshot.threads||[];
       if(!threads.some(thread=>thread.id===selectedId))selectedId=threads.find(thread=>thread.status==="active"&&!thread.isSubagent)?.id||threads.find(thread=>thread.status==="active")?.id||threads[0]?.id||null;
       const byParent=new Map();
       for(const thread of threads){if(thread.parentId){const list=byParent.get(thread.parentId)||[];list.push(thread);byParent.set(thread.parentId,list)}}
-      const roots=threads.filter(thread=>!thread.parentId||!threads.some(item=>item.id===thread.parentId));
+      const roots=rootTasks(threads);
       const term=query.trim().toLocaleLowerCase("ja");
       const visible=root=>{const group=family(root,byParent);const matchesFilter=filter==="all"||filter==="agents"&&group.some(item=>item.isSubagent)||filter==="focus"&&group.some(item=>item.status==="active"||item.status==="systemError");const matchesSearch=!term||group.some(item=>[item.title,item.project,item.model,item.effort,item.agentKind].some(value=>String(value||"").toLocaleLowerCase("ja").includes(term)));return matchesFilter&&matchesSearch};
       const compare=(a,b)=>Number(b.isPinned)-Number(a.isPinned)||(sortBy==="updated"?b.updatedAt-a.updatedAt:sortBy==="project"?String(a.project).localeCompare(String(b.project),"ja")||b.updatedAt-a.updatedAt:(priority[a.status]??9)-(priority[b.status]??9)||b.updatedAt-a.updatedAt);
       const sorted=roots.filter(visible).sort(compare);
       document.querySelector("#tasks").innerHTML=sorted.length?sorted.map(root=>card(root,byParent)).join(""):`<div class="empty">${!snapshot.threadsReady?"タスクを読み込み中…":filter==="focus"?"現在、進行中のタスクはありません":"表示できるタスクがありません"}</div>`;
       document.querySelector("#taskCount").textContent=`${sorted.length}件 / 全${roots.length}件`;
+      const allCompact=roots.length&&roots.every(root=>compactCards.has(root.id));document.querySelector("#toggleCards").textContent=allCompact?"すべて展開":"すべて最小";document.querySelector("#toggleCards").setAttribute("aria-pressed",String(Boolean(allCompact)));
       document.querySelector("#activeCount").textContent=threads.filter(thread=>thread.status==="active").length;
       document.querySelector("#agentCount").textContent=threads.filter(thread=>thread.isSubagent&&thread.status==="active").length;
       document.querySelector("#attentionCount").textContent=threads.filter(thread=>thread.status==="systemError").length;
@@ -247,7 +256,8 @@
     document.querySelector("#taskSearch").addEventListener("input",event=>{query=event.target.value;saveUi();render()});
     document.querySelector("#taskSearch").addEventListener("keydown",event=>{if(event.key==="Escape"&&query){query="";event.currentTarget.value="";saveUi();render()}});
     document.querySelector("#taskSort").addEventListener("change",event=>{sortBy=event.target.value;saveUi();render()});
-    document.querySelector("#tasks").addEventListener("click",event=>{const button=event.target.closest(".task-select");if(!button)return;selectedId=button.dataset.threadId;saveUi();render()});
+    document.querySelector("#toggleCards").addEventListener("click",()=>{const roots=rootTasks(snapshot.threads||[]);const allCompact=roots.length&&roots.every(root=>compactCards.has(root.id));for(const root of roots)allCompact?compactCards.delete(root.id):compactCards.add(root.id);saveUi();render()});
+    document.querySelector("#tasks").addEventListener("click",event=>{const button=event.target.closest(".task-select");const article=event.target.closest("[data-task-card]");let changed=false;if(button){selectedId=button.dataset.threadId;changed=true}if(article&&!event.target.closest(".children")){selectedId=article.dataset.taskCard;compactCards.has(selectedId)?compactCards.delete(selectedId):compactCards.add(selectedId);changed=true}if(changed){saveUi();render()}});
     document.querySelector("#tasks").addEventListener("toggle",event=>{const details=event.target.closest("details[data-thread-group]");if(!details)return;details.open?collapsed.delete(details.dataset.threadGroup):collapsed.add(details.dataset.threadGroup);saveUi()},true);
     document.addEventListener("keydown",event=>{if(event.key==="/"&&!event.ctrlKey&&!event.metaKey&&!/^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName)){event.preventDefault();document.querySelector("#taskSearch").focus()}});
     const events=new EventSource("/events");

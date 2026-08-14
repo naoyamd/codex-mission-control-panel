@@ -2,12 +2,13 @@
 
 A dependency-free local dashboard for Codex tasks, agents, context, and usage.
 
-Version 1.2.2 shows every task by default and uses a responsive overview layout:
+Version 1.3 shows every task by default and uses a responsive overview layout:
 
 - **Tasks:** live state, model, reasoning effort, remaining context, attention
   flags, pin priority, and nested subagents.
 - **Navigation:** search by task, project, model, or effort; switch sort order;
-  collapse agent trees; and keep the chosen view across reloads.
+  click a task card for a persistent minimal status and agent summary; and
+  minimize or expand all cards at once.
 - **Usage:** remaining Codex weekly capacity is the default view. Selected chat context
   and token activity live on a separate details screen; dedicated Spark limits
   stay out of the way.
