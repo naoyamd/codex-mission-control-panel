@@ -8,7 +8,7 @@ import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const version = "1.3.0";
+const version = "1.3.1";
 const here = dirname(fileURLToPath(import.meta.url));
 const sourceKinds = [
   "cli", "vscode", "exec", "appServer", "subAgent", "subAgentReview",

@@ -114,9 +114,9 @@
       .status-pane > .status-nav { grid-column:1 }
       .status-pane > .status-body { grid-column:2; grid-row:1 / span 2; padding:12px }
       #detailsPanel { grid-template-columns:repeat(2,minmax(0,1fr)) }
-      #tasks { columns:280px; column-gap:8px }
-      #tasks > article { display:inline-block; width:100%; break-inside:avoid-column }
-      #tasks > .empty { column-span:all }
+      #tasks { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); align-items:start; gap:8px }
+      #tasks > article { margin-bottom:0 }
+      #tasks > .empty { grid-column:1 / -1 }
     }
     @media (max-width:719px) { .status-pane { grid-row:1 } }
     @media (max-width:420px) { .workspace { padding:8px }.pane { border-radius:13px }.appbar-inner { padding:11px 12px } }
@@ -126,7 +126,7 @@
 <body>
   <header class="appbar">
     <div class="appbar-inner">
-      <div class="brand"><div class="mark" aria-hidden="true">M</div><div><div class="eyebrow">Codex · v1.3.0</div><h1>Mission Control</h1></div></div>
+      <div class="brand"><div class="mark" aria-hidden="true">M</div><div><div class="eyebrow">Codex · v1.3.1</div><h1>Mission Control</h1></div></div>
       <div class="live" id="live" data-state="connecting"><span class="dot" aria-hidden="true"></span><span id="connection" aria-live="polite">接続中</span></div>
     </div>
   </header>
